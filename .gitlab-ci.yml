@@ -1,0 +1,54 @@
+stages:
+  - build
+  - test
+  - benchmark
+  - tag-latest
+
+variables:
+  SERVICE_STREAM_KEY: adpa-data
+  SERVICE_CMD_KEY: adpa-cmd
+  LOGGING_LEVEL: DEBUG
+
+Build Image:
+  stage: build
+  image:
+    name: registry.insight-centre.org/sit/kaniko-gitlab:latest
+  script: |
+    rm -r /root/.docker
+    mkdir -p /kaniko/.docker
+    echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    echo "Building with dest: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}"
+    /kaniko/executor --context $CI_PROJECT_DIR --skip-tls-verify --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME --cache=true
+  except:
+    - tags
+
+test:
+  stage: test
+  image: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}
+  script:
+  - cd $CI_PROJECT_DIR
+  - pip install -e .
+  - python --version
+  - pipenv --version
+  - ./run_tests.sh
+
+Send to benchmark:
+  stage: benchmark
+  image: python:3.6
+  script:
+    - "curl -H \"PRIVATE-TOKEN: $SIT_TOKEN\" \"https://gitlab.insight-centre.org/api/v4/projects/2180/repository/files/test_benchmark.py/raw?ref=master\" -o test_benchmark.py"
+    - cat test_benchmark.py
+    - python test_benchmark.py ${BENCHMARK_PLATFORM_CONTROLLER_URL} adaptation-analyser $CI_REGISTRY_IMAGE $CI_COMMIT_REF_NAME
+  when: manual
+  allow_failure: false
+
+Tag Latest:
+  stage: tag-latest
+  image:
+    name: registry.insight-centre.org/sit/kaniko-gitlab:latest
+  script:
+    - rm -r /root/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - cd $CI_PROJECT_DIR
+    - echo "FROM ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}" > Dockerfile
+    - /kaniko/executor --skip-tls-verify --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:latest

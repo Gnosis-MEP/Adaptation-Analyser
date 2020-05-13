@@ -1,0 +1,13 @@
+version: '2.3'
+services:
+  redis:
+    image: redis:5.0.3
+    ports:
+      - "6379:6379"
+
+  service:
+    image: registry.insight-centre.org/sit/mps/adaptation-analyser:dev
+    command: echo "ok"
+    build:
+      context: '.'
+      dockerfile: 'Dockerfile'

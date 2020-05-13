@@ -1,0 +1,23 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[[source]]
+url = "https://${SIT_PYPI_USER}:${SIT_PYPI_PASS}@sit-pypi.herokuapp.com/simple"
+verify_ssl = true
+name = "sit-git"
+
+[dev-packages]
+ipython = "*"
+ipdb = "*"
+flake8 = "*"
+
+[packages]
+walrus = "==0.7.1"
+python-decouple = "==3.1"
+event-service-utils = "*"
+adaptation_analyser = {path = ".",editable = true}
+
+[requires]
+python_version = "3.6"
