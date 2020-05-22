@@ -40,3 +40,22 @@ class TestAdaptationAnalyser(MockedServiceStreamTestCase):
         self.assertTrue(mocked_process_action.called)
         self.service.process_action.assert_called_once_with(action=action, event_data=event_data, json_msg=msg_tuple[1])
 
+    @patch('adaptation_analyser.service.AdaptationAnalyser.process_notify_changed_entity_action')
+    def test_process_action_should_call_process_notify_changed_entity_action(self, mocked_notify_entity):
+        action = 'notifyChangedEntity'
+        change_type = 'addEntity'
+        entity_type = 'gnosis-mep:buffer_stream'
+        event_data = {
+            'id': '123',
+            'entity': {
+                '@type': entity_type
+            },
+            'action': action,
+            'change_type': change_type
+        }
+        msg_tuple = prepare_event_msg_tuple(event_data)
+        json_msg = msg_tuple[1]
+        self.service.process_action(action, event_data, json_msg)
+
+        self.assertTrue(mocked_notify_entity.called)
+        self.service.process_notify_changed_entity_action.assert_called_once_with(event_data, change_type, entity_type)
