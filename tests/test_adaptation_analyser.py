@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from event_service_utils.tests.base_test_case import MockedServiceStreamTestCase
 from event_service_utils.tests.json_msg_helper import prepare_event_msg_tuple
@@ -59,3 +59,46 @@ class TestAdaptationAnalyser(MockedServiceStreamTestCase):
 
         self.assertTrue(mocked_notify_entity.called)
         self.service.process_notify_changed_entity_action.assert_called_once_with(event_data, change_type, entity_type)
+
+    def test_process_notify_changed_entity_action_should_call_correct_funcs_correctly(self):
+        action = 'notifyChangedEntity'
+        change_type = 'addEntity'
+        entity_type = 'gnosis-mep:buffer_stream'
+        event_data = {
+            'id': '123',
+            'entity': {
+                '@type': entity_type
+            },
+            'action': action,
+            'change_type': change_type
+        }
+
+        func1 = MagicMock(__name__='mocked_func1', return_value='func_1_ret')
+        func2 = MagicMock(__name__='mocked_func2', return_value='func_2_ret')
+        self.service.entity_type_to_processing_functions_map[entity_type] = [func1, func2]
+        self.service.process_notify_changed_entity_action(event_data, change_type, entity_type)
+
+        self.assertTrue(func1.called)
+        self.assertTrue(func2.called)
+        func1.assert_called_once_with(event_data, change_type, None)
+        func2.assert_called_once_with(event_data, change_type, 'func_1_ret')
+
+    @patch('adaptation_analyser.service.AdaptationAnalyser.analyse_buffer_stream_change')
+    def test_process_notify_changed_entity_action_should_call_correct_funcs_for_buffer_stream_added(self, mocked_as_bs_change):
+        action = 'notifyChangedEntity'
+        change_type = 'addEntity'
+        entity_type = 'gnosis-mep:buffer_stream'
+        event_data = {
+            'id': '123',
+            'entity': {
+                '@type': entity_type
+            },
+            'action': action,
+            'change_type': change_type
+        }
+        mocked_as_bs_change.__name__ = 'mocked_as_bs_change'
+        self.service.entity_type_to_processing_functions_map[entity_type] = [mocked_as_bs_change]
+
+        self.service.process_notify_changed_entity_action(event_data, change_type, entity_type)
+
+        mocked_as_bs_change.assert_called_once_with(event_data, change_type, None)
