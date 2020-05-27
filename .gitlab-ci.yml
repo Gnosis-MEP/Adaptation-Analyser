@@ -18,7 +18,7 @@ Build Image:
     mkdir -p /kaniko/.docker
     echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
     echo "Building with dest: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}"
-    /kaniko/executor --context $CI_PROJECT_DIR --skip-tls-verify --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME --cache=true
+    /kaniko/executor --context $CI_PROJECT_DIR --skip-tls-verify --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   except:
     - tags
 
