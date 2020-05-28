@@ -48,6 +48,7 @@ Tag Latest:
     name: registry.insight-centre.org/sit/kaniko-gitlab:latest
   script:
     - rm -r /root/.docker
+    - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
     - cd $CI_PROJECT_DIR
     - echo "FROM ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}" > Dockerfile
