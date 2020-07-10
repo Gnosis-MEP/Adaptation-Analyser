@@ -26,6 +26,9 @@ class AdaptationAnalyser(BaseTracerService):
         self.entity_type_to_processing_functions_map = {
             'gnosis-mep:buffer_stream': [
                 self.analyse_buffer_stream_change
+            ],
+            'gnosis-mep:service_worker': [
+                self.analyse_service_worker_change
             ]
         }
         self.knowledge_cmd_stream_key = 'adpk-cmd'
@@ -52,6 +55,36 @@ class AdaptationAnalyser(BaseTracerService):
         self.logger.info('Sending Change Plan Request to Planner: {event_data}')
         self.write_event_with_trace(event_data, self.planner_cmd_stream)
 
+    def verify_service_worker_overloaded(self, event_data, min_queue_space_percent):
+        json_ld_entity = event_data['entity']
+        entity_graph = json_ld_entity['@graph']
+        overloaded_workers = []
+        for service_worker in entity_graph:
+            if service_worker['queue_space_percent'] < min_queue_space_percent:
+                overloaded_workers.append(service_worker)
+
+        return overloaded_workers
+
+    def verify_dont_have_similar_recent_plan_in_execution(self, event_data, change_plan_request_type):
+        # should check on K the current plans and their timestamp to ignore any plan that's too recent
+        return True
+
+    def analyse_service_worker_change(self, event_data, change_type, last_func_ret=None):
+        change_plan_request_type = 'serviceWorkerOverloaded'
+        if change_type == 'updateEntity':
+            if not self.verify_dont_have_similar_recent_plan_in_execution(event_data, change_plan_request_type):
+                self.logger.info(
+                    f'Ignoring "{change_plan_request_type}" because other similar plan was executed too rencently'
+                )
+                return
+
+            overloaded_workers = self.verify_service_worker_overloaded(event_data)
+            if len(overloaded_workers) != 0:
+                event_change_plan_data = self.build_change_plan_request_data(
+                    change_type=change_plan_request_type, change_cause=event_data['entity']
+                )
+                self.send_change_request_for_planner(event_change_plan_data)
+
     def analyse_buffer_stream_change(self, event_data, change_type, last_func_ret=None):
         if change_type == 'addEntity':
             # every time a buffer stream is added we need to update the scheduler to handle it
@@ -60,8 +93,6 @@ class AdaptationAnalyser(BaseTracerService):
             )
             self.send_change_request_for_planner(event_change_plan_data)
             return
-        else:
-            pass
 
     @timer_logger
     def process_data_event(self, event_data, json_msg):
@@ -83,14 +114,17 @@ class AdaptationAnalyser(BaseTracerService):
     def process_action(self, action, event_data, json_msg):
         if not super(AdaptationAnalyser, self).process_action(action, event_data, json_msg):
             return False
-        if action == 'notifyChangedEntity':
+        if action == 'notifyChangedEntityGraph':
             json_ld_entity = event_data['entity']
             entity_type = json_ld_entity['@type']
             change_type = event_data['change_type']
             self.process_notify_changed_entity_action(event_data, change_type, entity_type)
-        elif action == 'otherAction':
-            # do some other action
-            pass
+        elif action == 'notifyChangedEntityGraph':
+            json_ld_entity = event_data['entity']
+            entity_graph = json_ld_entity['@graph']
+            entity_type = entity_graph[0]['@type']
+            change_type = event_data['change_type']
+            self.process_notify_changed_entity_action(event_data, change_type, entity_type)
 
     def log_state(self):
         super(AdaptationAnalyser, self).log_state()
