@@ -1,3 +1,4 @@
+import datetime
 import threading
 
 from event_service_utils.logging.decorators import timer_logger
@@ -36,6 +37,9 @@ class AdaptationAnalyser(BaseTracerService):
         self.knowledge_cmd_stream = self.stream_factory.create(key=self.knowledge_cmd_stream_key, stype='streamOnly')
         self.planner_cmd_stream = self.stream_factory.create(key=self.planner_cmd_stream_key, stype='streamOnly')
 
+        self.min_seconds_to_ask_same_change_request_type = 3
+        self.recent_plan_change_requests_timestamps = {}
+        self.min_queue_space_percent = 0.3
     # def send_event_to_somewhere(self, event_data):
     #     self.logger.debug(f'Sending event to somewhere: {event_data}')
     #     self.write_event_with_trace(event_data, self.somewhere_stream)
@@ -52,7 +56,8 @@ class AdaptationAnalyser(BaseTracerService):
         return event_change_plan_data
 
     def send_change_request_for_planner(self, event_data):
-        self.logger.info('Sending Change Plan Request to Planner: {event_data}')
+        self.recent_plan_change_requests_timestamps[event_data['change']['type']] = datetime.datetime.now().timestamp()
+        self.logger.info(f'Sending Change Plan Request to Planner: {event_data}')
         self.write_event_with_trace(event_data, self.planner_cmd_stream)
 
     def verify_service_worker_overloaded(self, event_data, min_queue_space_percent):
@@ -60,13 +65,22 @@ class AdaptationAnalyser(BaseTracerService):
         entity_graph = json_ld_entity['@graph']
         overloaded_workers = []
         for service_worker in entity_graph:
-            if service_worker['queue_space_percent'] < min_queue_space_percent:
+            if service_worker['gnosis-mep:service_worker#queue_space_percent'] < min_queue_space_percent:
                 overloaded_workers.append(service_worker)
 
         return overloaded_workers
 
     def verify_dont_have_similar_recent_plan_in_execution(self, event_data, change_plan_request_type):
         # should check on K the current plans and their timestamp to ignore any plan that's too recent
+        last_request_timestamp = self.recent_plan_change_requests_timestamps.get(change_plan_request_type)
+        if not last_request_timestamp:
+            return True
+
+        ts_now = datetime.datetime.now().timestamp()
+        seconds_since_last_request = ts_now - last_request_timestamp
+        if seconds_since_last_request < self.min_seconds_to_ask_same_change_request_type:
+            return False
+
         return True
 
     def analyse_service_worker_change(self, event_data, change_type, last_func_ret=None):
@@ -78,7 +92,7 @@ class AdaptationAnalyser(BaseTracerService):
                 )
                 return
 
-            overloaded_workers = self.verify_service_worker_overloaded(event_data)
+            overloaded_workers = self.verify_service_worker_overloaded(event_data, self.min_queue_space_percent)
             if len(overloaded_workers) != 0:
                 event_change_plan_data = self.build_change_plan_request_data(
                     change_type=change_plan_request_type, change_cause=event_data['entity']
@@ -114,7 +128,7 @@ class AdaptationAnalyser(BaseTracerService):
     def process_action(self, action, event_data, json_msg):
         if not super(AdaptationAnalyser, self).process_action(action, event_data, json_msg):
             return False
-        if action == 'notifyChangedEntityGraph':
+        if action == 'notifyChangedEntity':
             json_ld_entity = event_data['entity']
             entity_type = json_ld_entity['@type']
             change_type = event_data['change_type']
@@ -129,6 +143,7 @@ class AdaptationAnalyser(BaseTracerService):
     def log_state(self):
         super(AdaptationAnalyser, self).log_state()
         self.logger.info(f'My service name is: {self.name}')
+        self._log_dict('Recent Change Requests: ', self.recent_plan_change_requests_timestamps)
 
     def run(self):
         super(AdaptationAnalyser, self).run()
