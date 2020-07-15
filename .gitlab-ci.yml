@@ -3,22 +3,29 @@ stages:
   - test
   - benchmark
   - tag-latest
+  - multiarch
 
 variables:
   SERVICE_STREAM_KEY: adpa-data
   SERVICE_CMD_KEY: adpa-cmd
   LOGGING_LEVEL: DEBUG
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
 
 Build Image:
+  image: jonoh/docker-buildx-qemu
   stage: build
-  image:
-    name: registry.insight-centre.org/sit/kaniko-gitlab:latest
-  script: |
-    rm -r /root/.docker
-    mkdir -p /kaniko/.docker
-    echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    echo "Building with dest: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}"
-    /kaniko/executor --context $CI_PROJECT_DIR --skip-tls-verify --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+  services:
+    - docker:19.03.0-dind
+  before_script:
+    - docker info
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - docker pull $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME} || echo 'No previous image to download as a base'
+    - docker build -t "$CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}" --build-arg SIT_PYPI_USER_VAR="$SIT_PYPI_USER" --build-arg SIT_PYPI_PASS_VAR="$SIT_PYPI_PASS" .
+    - docker push "$CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}"
   except:
     - tags
 
@@ -44,12 +51,32 @@ Send to benchmark:
 
 Tag Latest:
   stage: tag-latest
-  image:
-    name: registry.insight-centre.org/sit/kaniko-gitlab:latest
+  image: jonoh/docker-buildx-qemu
+
+  services:
+    - docker:19.03.0-dind
+  before_script:
+    - docker info
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   script:
-    - rm -r /root/.docker
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - cd $CI_PROJECT_DIR
-    - echo "FROM ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}" > Dockerfile
-    - /kaniko/executor --skip-tls-verify --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:latest
+    - docker pull "$CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}"
+    - docker tag "$CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}" $CI_REGISTRY_IMAGE:latest
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+
+build multiarch:
+  stage: multiarch
+  image: jonoh/docker-buildx-qemu
+  services:
+    - docker:19.03.0-dind
+  before_script:
+    - docker info
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    # Use docker-container driver to allow useful features (push/multi-platform)
+    - docker buildx create --driver docker-container --use
+    - docker buildx inspect --bootstrap
+  script:
+    - update-binfmts --enable # Important: Ensures execution of other binary formats is enabled in the kernel
+    - docker buildx build --platform linux/arm64,linux/amd64 --pull -t "$CI_REGISTRY_IMAGE:multiarch" --push --build-arg SIT_PYPI_USER_VAR="$SIT_PYPI_USER" --build-arg SIT_PYPI_PASS_VAR="$SIT_PYPI_PASS" .
+  when: manual
+  tags:
+    - multiarch
