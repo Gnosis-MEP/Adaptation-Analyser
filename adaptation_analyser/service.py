@@ -29,7 +29,8 @@ class AdaptationAnalyser(BaseTracerService):
                 self.analyse_buffer_stream_change
             ],
             'gnosis-mep:service_worker': [
-                self.analyse_service_worker_change
+                self.analyse_service_worker_change,
+                self.analyse_service_worker_best_idle,
             ]
         }
         self.knowledge_cmd_stream_key = 'adpk-cmd'
@@ -70,7 +71,30 @@ class AdaptationAnalyser(BaseTracerService):
 
         return overloaded_workers
 
-    def verify_dont_have_similar_recent_plan_in_execution(self, event_data, change_plan_request_type):
+    def verify_service_worker_best_idle(self, event_data):
+        json_ld_entity = event_data['entity']
+        entity_graph = json_ld_entity['@graph']
+        best_worker_by_service = {}
+        for service_worker in entity_graph:
+            energy_consumption = service_worker.get('gnosis-mep:service_worker#energy_consumption')
+            if energy_consumption is None:
+                continue
+            energy_consumption = float(energy_consumption)
+            worker_key = service_worker['gnosis-mep:service_worker#stream_key']
+            service_type = service_worker['gnosis-mep:service_worker#service_type']
+            queue_space_percent = int(service_worker['gnosis-mep:service_worker#queue_space_percent'])
+            best_worker_for_service_type = best_worker_by_service.get(service_type, None)
+            if best_worker_for_service_type and energy_consumption >= best_worker_for_service_type[1]:
+                continue
+            best_worker_for_service_type = (worker_key, energy_consumption, queue_space_percent)
+            best_worker_by_service[service_type] = best_worker_for_service_type
+
+        # filter out the workers that dont have all space left available
+        # that is, only get the ones that have 1 as the queue_space_percent
+        best_idle_workers_by_service = dict(filter(lambda x: x[1][2] == 1, best_worker_by_service.items()))
+        return best_idle_workers_by_service
+
+    def verify_dont_have_similar_recent_plan_in_execution(self, event_data, change_plan_request_type, extra_time=0):
         # should check on K the current plans and their timestamp to ignore any plan that's too recent
         last_request_timestamp = self.recent_plan_change_requests_timestamps.get(change_plan_request_type)
         if not last_request_timestamp:
@@ -78,7 +102,8 @@ class AdaptationAnalyser(BaseTracerService):
 
         ts_now = datetime.datetime.now().timestamp()
         seconds_since_last_request = ts_now - last_request_timestamp
-        if seconds_since_last_request < self.min_seconds_to_ask_same_change_request_type:
+        min_time = self.min_seconds_to_ask_same_change_request_type + extra_time
+        if seconds_since_last_request < min_time:
             return False
 
         return True
@@ -98,6 +123,28 @@ class AdaptationAnalyser(BaseTracerService):
                     change_type=change_plan_request_type, change_cause=event_data['entity']
                 )
                 self.send_change_request_for_planner(event_change_plan_data)
+                return event_change_plan_data
+
+    def analyse_service_worker_best_idle(self, event_data, change_type, last_func_ret=None):
+        change_plan_request_type = 'serviceWorkerBestIdle'
+
+        if last_func_ret is not None:
+            self.logger.info(f'Ignoring best idle worker analysis, since a previous plan was already prepared.')
+            return
+
+        if change_type == 'updateEntity':
+            if not self.verify_dont_have_similar_recent_plan_in_execution(event_data, change_plan_request_type, extra_time=1):
+                self.logger.info(
+                    f'Ignoring "{change_plan_request_type}" because other similar plan was executed too rencently'
+                )
+                return
+            best_idle_workers_by_service = self.verify_service_worker_best_idle(event_data)
+            if len(best_idle_workers_by_service.keys()) != 0:
+                event_change_plan_data = self.build_change_plan_request_data(
+                    change_type=change_plan_request_type, change_cause=event_data['entity']
+                )
+                self.send_change_request_for_planner(event_change_plan_data)
+                return event_change_plan_data
 
     def analyse_buffer_stream_change(self, event_data, change_type, last_func_ret=None):
         if change_type == 'addEntity':
@@ -143,7 +190,7 @@ class AdaptationAnalyser(BaseTracerService):
     def log_state(self):
         super(AdaptationAnalyser, self).log_state()
         self.logger.info(f'My service name is: {self.name}')
-        self._log_dict('Recent Change Requests: ', self.recent_plan_change_requests_timestamps)
+        self._log_dict('Recent Change Requests', self.recent_plan_change_requests_timestamps)
 
     def run(self):
         super(AdaptationAnalyser, self).run()
