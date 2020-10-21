@@ -31,6 +31,9 @@ class AdaptationAnalyser(BaseTracerService):
             'gnosis-mep:service_worker': [
                 self.analyse_service_worker_change,
                 self.analyse_service_worker_best_idle,
+            ],
+            'gnosis-mep:subscriber_query': [
+                self.analyse_subscriber_query_change,
             ]
         }
         self.knowledge_cmd_stream_key = 'adpk-cmd'
@@ -41,6 +44,23 @@ class AdaptationAnalyser(BaseTracerService):
         self.min_seconds_to_ask_same_change_request_type = 3
         self.recent_plan_change_requests_timestamps = {}
         self.min_queue_space_percent = 0.3
+
+        self.has_received_subquery = False
+        self.has_received_bufferstream = False
+
+    def _workaround_for_query_and_bufferstream_race_condition(self, event_type):
+        if event_type == 'subscriber_query':
+            self.has_received_subquery = True
+        if event_type == 'bufferstream':
+            self.has_received_bufferstream = True
+
+        ret = self.has_received_bufferstream and self.has_received_subquery
+        # if received both, than should reset so that a new one can be validated
+        if ret:
+            self.has_received_bufferstream = False
+            self.has_received_subquery = False
+        return ret
+
     # def send_event_to_somewhere(self, event_data):
     #     self.logger.debug(f'Sending event to somewhere: {event_data}')
     #     self.write_event_with_trace(event_data, self.somewhere_stream)
@@ -148,11 +168,26 @@ class AdaptationAnalyser(BaseTracerService):
 
     def analyse_buffer_stream_change(self, event_data, change_type, last_func_ret=None):
         if change_type == 'addEntity':
-            # every time a buffer stream is added we need to update the scheduler to handle it
-            event_change_plan_data = self.build_change_plan_request_data(
-                change_type='incorrectSchedulerPlan', change_cause=event_data['entity']
-            )
-            self.send_change_request_for_planner(event_change_plan_data)
+            # Should only send the request if we received already a query change event
+            # otherwise it means that this info will not be available for the planner yet.
+            # the same thing will occur for the query change.
+            if self._workaround_for_query_and_bufferstream_race_condition('bufferstream'):
+                event_change_plan_data = self.build_change_plan_request_data(
+                    change_type='incorrectSchedulerPlan', change_cause=event_data['entity']
+                )
+                self.send_change_request_for_planner(event_change_plan_data)
+            return
+
+    def analyse_subscriber_query_change(self, event_data, change_type, last_func_ret=None):
+        if change_type == 'addEntity':
+            # Should only send the request if we received already a buffer stream change event
+            # otherwise it means that this info will not be available for the planner yet.
+            # the same thing will occur for the query change.
+            if self._workaround_for_query_and_bufferstream_race_condition('subscriber_query'):
+                event_change_plan_data = self.build_change_plan_request_data(
+                    change_type='incorrectSchedulerPlan', change_cause=event_data['entity']
+                )
+                self.send_change_request_for_planner(event_change_plan_data)
             return
 
     @timer_logger
