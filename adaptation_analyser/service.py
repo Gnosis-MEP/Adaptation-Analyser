@@ -1,4 +1,5 @@
 import datetime
+import math
 import threading
 
 from event_service_utils.logging.decorators import timer_logger
@@ -44,9 +45,33 @@ class AdaptationAnalyser(BaseTracerService):
         self.min_seconds_to_ask_same_change_request_type = 3
         self.recent_plan_change_requests_timestamps = {}
         self.min_queue_space_percent = 0.3
-
+        self.adaptation_delta = 10
+        self.best_workers_by_service_by_qos_policy = {}
+        self.query_qos_policies = self.prepare_query_qos_policies()
         self.has_received_subquery = False
         self.has_received_bufferstream = False
+
+    def prepare_query_qos_policies(self):
+        query_qos_policies = {
+            'energy_consumption=min': {
+                'worker_policy_key': 'gnosis-mep:service_worker#energy_consumption',
+            },
+            'latency=min': {
+                'worker_policy_key': 'gnosis-mep:service_worker#throughput',
+            },
+            'accuracy=max': {
+                'worker_policy_key': 'gnosis-mep:service_worker#accuracy',
+            },
+        }
+
+        for qos_policy, policy_data in query_qos_policies.items():
+            if '=min' in qos_policy and 'latency' not in qos_policy:
+                comparison = lambda a, b: a < b
+            else:
+                comparison = lambda a, b: a > b
+            policy_data['worker_a_b_comparison'] = comparison
+
+        return query_qos_policies
 
     def _workaround_for_query_and_bufferstream_race_condition(self, event_type):
         if event_type == 'subscriber_query':
@@ -81,38 +106,72 @@ class AdaptationAnalyser(BaseTracerService):
         self.logger.info(f'Sending Change Plan Request to Planner: {event_data}')
         self.write_event_with_trace(event_data, self.planner_cmd_stream)
 
+    def _is_service_worker_overloaded(self, service_worker):
+        queue_size = int(service_worker['gnosis-mep:service_worker#queue_size'])
+        throughput = float(service_worker['gnosis-mep:service_worker#throughput'])
+        capacity = math.floor(throughput * self.adaptation_delta)
+        return capacity > queue_size
+
     def verify_service_worker_overloaded(self, event_data, min_queue_space_percent):
         json_ld_entity = event_data['entity']
         entity_graph = json_ld_entity['@graph']
-        overloaded_workers = []
-        for service_worker in entity_graph:
-            if service_worker['gnosis-mep:service_worker#queue_space_percent'] < min_queue_space_percent:
-                overloaded_workers.append(service_worker)
+        overloaded_workers = list(filter(lambda w: self._is_service_worker_overloaded(w), entity_graph))
 
         return overloaded_workers
+
+    def get_best_worker_by_service_by_qos_policy(self, entity_graph):
+        tracked_policies = set(sorted(self.best_workers_by_service_by_qos_policy.keys()))
+        current_policies = set(sorted(self.query_qos_policies.keys()))
+        has_new_policy = tracked_policies != current_policies
+        if has_new_policy:
+            for service_worker in entity_graph:
+                service_type = service_worker['gnosis-mep:service_worker#service_type']
+
+                for qos_policy, policy_data in self.query_qos_policies.items():
+                    if qos_policy in tracked_policies:
+                        continue
+
+                    #'gnosis-mep:service_worker#energy_consumption'
+                    worker_policy_key = policy_data['worker_policy_key']
+                    worker_policy_value = service_worker.get(worker_policy_key)
+                    if worker_policy_value is None:
+                        continue
+
+                    worker_policy_value = float(worker_policy_value)
+
+                    qos_policy_best_workers = self.best_workers_by_service_by_qos_policy.set_default(qos_policy, {})
+
+                    best_worker_for_service_type = qos_policy_best_workers.get(service_type, None)
+                    worker_policy_comparison = policy_data['worker_a_b_comparison']
+                    has_best_worker = best_worker_for_service_type is not None
+                    if has_best_worker and worker_policy_comparison(service_worker, best_worker_for_service_type):
+                        continue
+                    qos_policy_best_workers[service_type] = service_worker
+
+        else:
+            return self.best_workers_by_service_by_qos_policy
+
+    def _is_worker_idle(self, service_worker):
+        queue_size = int(service_worker['gnosis-mep:service_worker#queue_size'])
+        return queue_size == 0
 
     def verify_service_worker_best_idle(self, event_data):
         json_ld_entity = event_data['entity']
         entity_graph = json_ld_entity['@graph']
-        best_worker_by_service = {}
-        for service_worker in entity_graph:
-            energy_consumption = service_worker.get('gnosis-mep:service_worker#energy_consumption')
-            if energy_consumption is None:
-                continue
-            energy_consumption = float(energy_consumption)
-            worker_key = service_worker['gnosis-mep:service_worker#stream_key']
-            service_type = service_worker['gnosis-mep:service_worker#service_type']
-            queue_space_percent = int(service_worker['gnosis-mep:service_worker#queue_space_percent'])
-            best_worker_for_service_type = best_worker_by_service.get(service_type, None)
-            if best_worker_for_service_type and energy_consumption >= best_worker_for_service_type[1]:
-                continue
-            best_worker_for_service_type = (worker_key, energy_consumption, queue_space_percent)
-            best_worker_by_service[service_type] = best_worker_for_service_type
 
-        # filter out the workers that dont have all space left available
-        # that is, only get the ones that have 1 as the queue_space_percent
-        best_idle_workers_by_service = dict(filter(lambda x: x[1][2] == 1, best_worker_by_service.items()))
-        return best_idle_workers_by_service
+        idle_workers_keys = list(filter(
+            lambda sw: self._is_worker_idle(sw)['gnosis-mep:service_worker#stream_key'],
+            entity_graph
+        ))
+        best_workers_keys = set([])
+
+        for qos_policy in self.query_qos_policies.keys():
+            for service_worker in self.get_best_worker_by_service_by_qos_policy(entity_graph)[qos_policy].values():
+                worker_key = service_worker['gnosis-mep:service_worker#stream_key']
+                best_workers_keys.add(worker_key)
+
+        has_idle_best_worker = any([best_w_key in idle_workers_keys for best_w_key in best_workers_keys])
+        return has_idle_best_worker
 
     def verify_dont_have_similar_recent_plan_in_execution(self, event_data, change_plan_request_type, extra_time=0):
         # should check on K the current plans and their timestamp to ignore any plan that's too recent
@@ -158,8 +217,8 @@ class AdaptationAnalyser(BaseTracerService):
                     f'Ignoring "{change_plan_request_type}" because other similar plan was executed too rencently'
                 )
                 return
-            best_idle_workers_by_service = self.verify_service_worker_best_idle(event_data)
-            if len(best_idle_workers_by_service.keys()) != 0:
+            has_idle_best_worker = self.verify_service_worker_best_idle(event_data)
+            if has_idle_best_worker:
                 event_change_plan_data = self.build_change_plan_request_data(
                     change_type=change_plan_request_type, change_cause=event_data['entity']
                 )
@@ -189,13 +248,6 @@ class AdaptationAnalyser(BaseTracerService):
                 )
                 self.send_change_request_for_planner(event_change_plan_data)
             return
-
-    @timer_logger
-    def process_data_event(self, event_data, json_msg):
-        if not super(AdaptationAnalyser, self).process_data_event(event_data, json_msg):
-            return False
-        # do something here
-        pass
 
     def process_notify_changed_entity_action(self, event_data, change_type, entity_type):
         processing_functions = self.entity_type_to_processing_functions_map.get(entity_type)
@@ -230,8 +282,5 @@ class AdaptationAnalyser(BaseTracerService):
     def run(self):
         super(AdaptationAnalyser, self).run()
         self.cmd_thread = threading.Thread(target=self.run_forever, args=(self.process_cmd,))
-        self.data_thread = threading.Thread(target=self.run_forever, args=(self.process_data,))
         self.cmd_thread.start()
-        self.data_thread.start()
         self.cmd_thread.join()
-        self.data_thread.join()
