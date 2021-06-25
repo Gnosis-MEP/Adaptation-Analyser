@@ -50,6 +50,7 @@ class AdaptationAnalyser(BaseTracerService):
         self.query_qos_policies = self.prepare_query_qos_policies()
         self.has_received_subquery = False
         self.has_received_bufferstream = False
+        self.number_of_workers = 0
 
     def prepare_query_qos_policies(self):
         query_qos_policies = {
@@ -64,13 +65,19 @@ class AdaptationAnalyser(BaseTracerService):
             },
         }
 
-        for qos_policy, policy_data in query_qos_policies.items():
-            if '=min' in qos_policy and 'latency' not in qos_policy:
-                comparison = lambda a, b: a < b
-            else:
-                comparison = lambda a, b: a > b
-            policy_data['worker_a_b_comparison'] = comparison
+        def comp_lower_than(a_val, b_val):
+            return a_val < b_val
 
+        def comp_higher_than(a_val, b_val):
+            return a_val > b_val
+
+        for qos_policy, policy_data in query_qos_policies.items():
+            if '=min' in qos_policy and 'energy_consumption' in qos_policy:
+                comparison = comp_lower_than
+            else:
+                comparison = comp_higher_than
+            # policy_data['worker_a_b_comparison'] = comparison
+            query_qos_policies[qos_policy]['worker_a_b_comparison'] = comparison
         return query_qos_policies
 
     def _workaround_for_query_and_bufferstream_race_condition(self, event_type):
@@ -123,13 +130,14 @@ class AdaptationAnalyser(BaseTracerService):
         tracked_policies = set(sorted(self.best_workers_by_service_by_qos_policy.keys()))
         current_policies = set(sorted(self.query_qos_policies.keys()))
         has_new_policy = tracked_policies != current_policies
-        if has_new_policy:
-            for service_worker in entity_graph:
-                service_type = service_worker['gnosis-mep:service_worker#service_type']
+        has_new_worker = len(entity_graph) != self.number_of_workers
+        if has_new_policy or has_new_worker:
+            for qos_policy, policy_data in self.query_qos_policies.items():
+                if qos_policy in tracked_policies and not has_new_worker:
+                    continue
 
-                for qos_policy, policy_data in self.query_qos_policies.items():
-                    if qos_policy in tracked_policies:
-                        continue
+                for service_worker in entity_graph:
+                    service_type = service_worker['gnosis-mep:service_worker#service_type']
 
                     #'gnosis-mep:service_worker#energy_consumption'
                     worker_policy_key = policy_data['worker_policy_key']
@@ -139,28 +147,36 @@ class AdaptationAnalyser(BaseTracerService):
 
                     worker_policy_value = float(worker_policy_value)
 
-                    qos_policy_best_workers = self.best_workers_by_service_by_qos_policy.set_default(qos_policy, {})
+                    qos_policy_best_workers = self.best_workers_by_service_by_qos_policy.setdefault(qos_policy, {})
 
                     best_worker_for_service_type = qos_policy_best_workers.get(service_type, None)
                     worker_policy_comparison = policy_data['worker_a_b_comparison']
                     has_best_worker = best_worker_for_service_type is not None
-                    if has_best_worker and worker_policy_comparison(service_worker, best_worker_for_service_type):
-                        continue
+                    if has_best_worker:
+                        best_worker_policy_value = best_worker_for_service_type[worker_policy_key]
+                        is_bestter_than = worker_policy_comparison(worker_policy_value, best_worker_policy_value)
+                        if not is_bestter_than:
+                            continue
                     qos_policy_best_workers[service_type] = service_worker
-
-        else:
-            return self.best_workers_by_service_by_qos_policy
+                    self.best_workers_by_service_by_qos_policy[qos_policy] = qos_policy_best_workers
+            self.number_of_workers = len(entity_graph)
+        return self.best_workers_by_service_by_qos_policy
 
     def _is_worker_idle(self, service_worker):
         queue_size = int(service_worker['gnosis-mep:service_worker#queue_size'])
         return queue_size == 0
 
+    def update_best_worker_by_service_by_qos_policy(self, event_data):
+        json_ld_entity = event_data['entity']
+        entity_graph = json_ld_entity['@graph']
+        self.get_best_worker_by_service_by_qos_policy(entity_graph)
+
     def verify_service_worker_best_idle(self, event_data):
         json_ld_entity = event_data['entity']
         entity_graph = json_ld_entity['@graph']
 
-        idle_workers_keys = list(filter(
-            lambda sw: self._is_worker_idle(sw)['gnosis-mep:service_worker#stream_key'],
+        idle_workers_keys = map(lambda f: f['gnosis-mep:service_worker#stream_key'], filter(
+            lambda sw: self._is_worker_idle(sw),
             entity_graph
         ))
         best_workers_keys = set([])
@@ -206,7 +222,7 @@ class AdaptationAnalyser(BaseTracerService):
 
     def analyse_service_worker_best_idle(self, event_data, change_type, last_func_ret=None):
         change_plan_request_type = 'serviceWorkerBestIdle'
-
+        self.update_best_worker_by_service_by_qos_policy(event_data)
         if last_func_ret is not None:
             self.logger.info(f'Ignoring best idle worker analysis, since a previous plan was already prepared.')
             return
@@ -278,6 +294,7 @@ class AdaptationAnalyser(BaseTracerService):
         super(AdaptationAnalyser, self).log_state()
         self.logger.info(f'My service name is: {self.name}')
         self._log_dict('Recent Change Requests', self.recent_plan_change_requests_timestamps)
+        self._log_dict('Best Workers by service by QOS policy', self.best_workers_by_service_by_qos_policy)
 
     def run(self):
         super(AdaptationAnalyser, self).run()
