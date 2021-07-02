@@ -174,17 +174,15 @@ class AdaptationAnalyser(BaseTracerService):
     def verify_service_worker_best_idle(self, event_data):
         json_ld_entity = event_data['entity']
         entity_graph = json_ld_entity['@graph']
-
-        idle_workers_keys = map(lambda f: f['gnosis-mep:service_worker#stream_key'], filter(
+        idle_workers_keys = list(map(lambda f: f['gnosis-mep:service_worker#stream_key'], filter(
             lambda sw: self._is_worker_idle(sw),
             entity_graph
-        ))
+        )))
 
         # if all workers are idle than it doesn't matter
         # because there isn't actually any input to be done
         if len(idle_workers_keys) == len(entity_graph):
             return False
-
         best_workers_keys = set([])
 
         for qos_policy in self.query_qos_policies.keys():
