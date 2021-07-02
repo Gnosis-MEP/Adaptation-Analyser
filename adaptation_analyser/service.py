@@ -117,7 +117,7 @@ class AdaptationAnalyser(BaseTracerService):
         queue_size = int(service_worker['gnosis-mep:service_worker#queue_size'])
         throughput = float(service_worker['gnosis-mep:service_worker#throughput'])
         capacity = math.floor(throughput * self.adaptation_delta)
-        return capacity > queue_size
+        return capacity < queue_size
 
     def verify_service_worker_overloaded(self, event_data, min_queue_space_percent):
         json_ld_entity = event_data['entity']
