@@ -179,6 +179,12 @@ class AdaptationAnalyser(BaseTracerService):
             lambda sw: self._is_worker_idle(sw),
             entity_graph
         ))
+
+        # if all workers are idle than it doesn't matter
+        # because there isn't actually any input to be done
+        if len(idle_workers_keys) == len(entity_graph):
+            return False
+
         best_workers_keys = set([])
 
         for qos_policy in self.query_qos_policies.keys():
