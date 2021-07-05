@@ -267,7 +267,7 @@ class AdaptationAnalyser(BaseTracerService):
 
             self.overloaded_workers = self.verify_service_worker_overloaded(event_data)
 
-            if len(overloaded_workers) != 0:
+            if len(self.overloaded_workers) != 0:
                 event_change_plan_data = self.build_change_plan_request_data(
                     change_type=change_plan_request_type, change_cause=event_data['entity']
                 )
