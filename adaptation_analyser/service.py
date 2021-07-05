@@ -30,7 +30,7 @@ class AdaptationAnalyser(BaseTracerService):
                 self.analyse_buffer_stream_change
             ],
             'gnosis-mep:service_worker': [
-                self.analyse_service_worker_change,
+                self.analyse_service_worker_overloaded,
                 self.analyse_service_worker_best_idle,
             ],
             'gnosis-mep:subscriber_query': [
@@ -44,13 +44,14 @@ class AdaptationAnalyser(BaseTracerService):
 
         self.min_seconds_to_ask_same_change_request_type = 3
         self.recent_plan_change_requests_timestamps = {}
-        self.min_queue_space_percent = 0.3
         self.adaptation_delta = 10
         self.best_workers_by_service_by_qos_policy = {}
         self.query_qos_policies = self.prepare_query_qos_policies()
         self.has_received_subquery = False
         self.has_received_bufferstream = False
         self.number_of_workers = 0
+        self.current_plan = None
+        self.overloaded_workers = None
 
     def prepare_query_qos_policies(self):
         query_qos_policies = {
@@ -119,7 +120,7 @@ class AdaptationAnalyser(BaseTracerService):
         capacity = math.floor(throughput * self.adaptation_delta)
         return capacity < queue_size
 
-    def verify_service_worker_overloaded(self, event_data, min_queue_space_percent):
+    def verify_service_worker_overloaded(self, event_data):
         json_ld_entity = event_data['entity']
         entity_graph = json_ld_entity['@graph']
         overloaded_workers = list(filter(lambda w: self._is_service_worker_overloaded(w), entity_graph))
@@ -193,6 +194,49 @@ class AdaptationAnalyser(BaseTracerService):
         has_idle_best_worker = any([best_w_key in idle_workers_keys for best_w_key in best_workers_keys])
         return has_idle_best_worker
 
+    def verify_unnecessary_load_shedding_for_dataflow(self, overloaded_workers_keys, dataflow):
+        for worker_key_list in dataflow:
+            worker_key = worker_key_list[0]
+            if worker_key in overloaded_workers_keys:
+                return False
+
+        return True
+
+    def filter_dataflow_choices_with_load_shedding(self, dataflow_choices):
+        filtered = []
+        if len(dataflow_choices) > 0 and len(dataflow_choices[0]) == 3:
+            for choice in dataflow_choices:
+                load_shedding = float(choice[0])
+                if load_shedding > 0:
+                    filtered.append[choice]
+
+        return filtered
+
+    def verify_unnecessary_load_shedding(self, event_data):
+        if self.overloaded_workers is None:
+            self.overloaded_workers = self.verify_service_worker_overloaded(event_data)
+        if self.current_plan is not None:
+            execution_plan_strategy = self.current_plan.get('execution_plan', {}).get('strategy', {})
+            strategy_name = execution_plan_strategy.get('name', '')
+            is_load_shedding_strategy = 'load_shedding' in strategy_name
+            if is_load_shedding_strategy:
+                # if there are no overloaded_workers, than no load shedding should exist
+                if len(self.overloaded_workers) == 0:
+                    return True
+
+                dataflow_choices = execution_plan_strategy.get('dataflows', [])
+                dataflow_choices_with_load_shedding = self.filter_dataflow_choices_with_load_shedding(dataflow_choices)
+                overloaded_workers_keys = set([
+                    w['gnosis-mep:service_worker#stream_key'] for w in self.overloaded_workers])
+
+                for choice in dataflow_choices_with_load_shedding:
+                    dataflow = choice[2]
+                    has_unnecessary_load_shedding = self.verify_unnecessary_load_shedding_for_dataflow(
+                        overloaded_workers_keys, dataflow)
+                    if has_unnecessary_load_shedding:
+                        return True
+        return False
+
     def verify_dont_have_similar_recent_plan_in_execution(self, event_data, change_plan_request_type, extra_time=0):
         # should check on K the current plans and their timestamp to ignore any plan that's too recent
         last_request_timestamp = self.recent_plan_change_requests_timestamps.get(change_plan_request_type)
@@ -207,8 +251,13 @@ class AdaptationAnalyser(BaseTracerService):
 
         return True
 
-    def analyse_service_worker_change(self, event_data, change_type, last_func_ret=None):
+    def analyse_service_worker_overloaded(self, event_data, change_type, last_func_ret=None):
         change_plan_request_type = 'serviceWorkerOverloaded'
+        if last_func_ret is not None:
+            self.logger.info(f'Ignoring overloaded worker analysis, since a previous plan was already prepared.')
+            return last_func_ret
+
+        self.overloaded_workers = None
         if change_type == 'updateEntity':
             if not self.verify_dont_have_similar_recent_plan_in_execution(event_data, change_plan_request_type):
                 self.logger.info(
@@ -216,7 +265,8 @@ class AdaptationAnalyser(BaseTracerService):
                 )
                 return
 
-            overloaded_workers = self.verify_service_worker_overloaded(event_data, self.min_queue_space_percent)
+            self.overloaded_workers = self.verify_service_worker_overloaded(event_data)
+
             if len(overloaded_workers) != 0:
                 event_change_plan_data = self.build_change_plan_request_data(
                     change_type=change_plan_request_type, change_cause=event_data['entity']
@@ -226,11 +276,11 @@ class AdaptationAnalyser(BaseTracerService):
 
     def analyse_service_worker_best_idle(self, event_data, change_type, last_func_ret=None):
         change_plan_request_type = 'serviceWorkerBestIdle'
-        self.update_best_worker_by_service_by_qos_policy(event_data)
         if last_func_ret is not None:
             self.logger.info(f'Ignoring best idle worker analysis, since a previous plan was already prepared.')
-            return
+            return last_func_ret
 
+        self.update_best_worker_by_service_by_qos_policy(event_data)
         if change_type == 'updateEntity':
             if not self.verify_dont_have_similar_recent_plan_in_execution(event_data, change_plan_request_type, extra_time=1):
                 self.logger.info(
@@ -239,6 +289,26 @@ class AdaptationAnalyser(BaseTracerService):
                 return
             has_idle_best_worker = self.verify_service_worker_best_idle(event_data)
             if has_idle_best_worker:
+                event_change_plan_data = self.build_change_plan_request_data(
+                    change_type=change_plan_request_type, change_cause=event_data['entity']
+                )
+                self.send_change_request_for_planner(event_change_plan_data)
+                return event_change_plan_data
+
+    def analyse_unnecessary_load_shedding(self, event_data, change_type, last_func_ret=None):
+        change_plan_request_type = 'unnecessaryLoadShedding'
+        if last_func_ret is not None:
+            self.logger.info(f'Ignoring unnecessary loadsheedding analysis, since a previous plan was already prepared.')
+            return last_func_ret
+
+        if change_type == 'updateEntity':
+            if not self.verify_dont_have_similar_recent_plan_in_execution(event_data, change_plan_request_type, extra_time=1):
+                self.logger.info(
+                    f'Ignoring "{change_plan_request_type}" because other similar plan was executed too rencently'
+                )
+                return
+            has_unnecessary_load_shedding = self.verify_unnecessary_load_shedding(event_data)
+            if has_unnecessary_load_shedding:
                 event_change_plan_data = self.build_change_plan_request_data(
                     change_type=change_plan_request_type, change_cause=event_data['entity']
                 )
@@ -279,6 +349,9 @@ class AdaptationAnalyser(BaseTracerService):
             last_func_ret = func(event_data, change_type, last_func_ret)
         return last_func_ret
 
+    def update_current_plan(self, plan):
+        self.current_plan = plan
+
     def process_action(self, action, event_data, json_msg):
         if not super(AdaptationAnalyser, self).process_action(action, event_data, json_msg):
             return False
@@ -293,6 +366,11 @@ class AdaptationAnalyser(BaseTracerService):
             entity_type = entity_graph[0]['@type']
             change_type = event_data['change_type']
             self.process_notify_changed_entity_action(event_data, change_type, entity_type)
+        elif action == 'currentAdaptationPlan':
+            #meh, workaround for getting the latest plan
+            #will be removed once I rewrite the whole model to event driven
+            plan = event_data['data']
+            self.update_current_plan(plan)
 
     def log_state(self):
         super(AdaptationAnalyser, self).log_state()
