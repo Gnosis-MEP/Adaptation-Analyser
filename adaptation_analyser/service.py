@@ -52,6 +52,7 @@ class AdaptationAnalyser(BaseTracerService):
         self.number_of_workers = 0
         self.current_plan = None
         self.overloaded_workers = None
+        self.is_overloaded_percentage = 0.7
 
     def prepare_query_qos_policies(self):
         query_qos_policies = {
@@ -118,7 +119,9 @@ class AdaptationAnalyser(BaseTracerService):
         queue_size = int(service_worker['gnosis-mep:service_worker#queue_size'])
         throughput = float(service_worker['gnosis-mep:service_worker#throughput'])
         capacity = math.floor(throughput * self.adaptation_delta)
-        return capacity < queue_size
+        overloaded_percentage = queue_size / capacity
+
+        return overloaded_percentage >= self.is_overloaded_percentage
 
     def verify_service_worker_overloaded(self, event_data):
         json_ld_entity = event_data['entity']
