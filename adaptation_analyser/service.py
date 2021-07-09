@@ -119,6 +119,8 @@ class AdaptationAnalyser(BaseTracerService):
         queue_size = int(service_worker['gnosis-mep:service_worker#queue_size'])
         throughput = float(service_worker['gnosis-mep:service_worker#throughput'])
         capacity = math.floor(throughput * self.adaptation_delta)
+        if capacity == 0:
+            return True
         overloaded_percentage = queue_size / capacity
 
         return overloaded_percentage >= self.is_overloaded_percentage
