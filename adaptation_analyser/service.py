@@ -32,6 +32,7 @@ class AdaptationAnalyser(BaseTracerService):
             'gnosis-mep:service_worker': [
                 self.analyse_service_worker_overloaded,
                 self.analyse_service_worker_best_idle,
+                self.analyse_unnecessary_load_shedding,
             ],
             'gnosis-mep:subscriber_query': [
                 self.analyse_subscriber_query_change,
