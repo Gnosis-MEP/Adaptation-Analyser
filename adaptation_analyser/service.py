@@ -488,10 +488,62 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
             )
             return event_change_plan_data
 
+    def verify_unnecessary_load_shedding_for_dataflow(self, overloaded_workers_keys, dataflow):
+        for worker_key_list in dataflow:
+            worker_key = worker_key_list[0]
+            if worker_key in overloaded_workers_keys:
+                return False
+
+        return True
+
+    def filter_dataflow_choices_with_load_shedding(self, dataflow_choices):
+        filtered = []
+        if len(dataflow_choices) > 0 and len(dataflow_choices[0]) == 3:
+            for choice in dataflow_choices:
+                load_shedding = float(choice[0])
+                if load_shedding > 0:
+                    filtered.append[choice]
+
+        return filtered
+
+    def verify_unnecessary_load_shedding(self, event_data):
+        if self.current_plan is not None:
+            execution_plan_strategy = self.current_plan.get('execution_plan', {}).get('strategy', {})
+            strategy_name = execution_plan_strategy.get('name', '')
+            is_load_shedding_strategy = 'load_shedding' in strategy_name
+            if is_load_shedding_strategy:
+                # if there are no overloaded_workers, than no load shedding should exist
+                if len(self.overloaded_workers) == 0:
+                    return True
+
+                dataflow_choices = execution_plan_strategy.get('dataflows', [])
+                dataflow_choices_with_load_shedding = self.filter_dataflow_choices_with_load_shedding(dataflow_choices)
+                overloaded_workers_keys = set([
+                    w['stream_key'] for w in self.overloaded_workers])
+
+                for choice in dataflow_choices_with_load_shedding:
+                    dataflow = choice[2]
+                    has_unnecessary_load_shedding = self.verify_unnecessary_load_shedding_for_dataflow(
+                        overloaded_workers_keys, dataflow)
+                    if has_unnecessary_load_shedding:
+                        return True
+        return False
+
+    def analyse_unnecessary_load_shedding(self, event_data):
+        event_type = 'UnnecessaryLoadSheddingPlanRequested'
+        event_change_plan_data = None
+        has_unnecessary_load_shedding = self.verify_unnecessary_load_shedding(event_data)
+        if has_unnecessary_load_shedding:
+            event_change_plan_data = self.build_change_plan_request_data(
+                event_type=event_type, change_cause=event_data
+            )
+            return event_change_plan_data
+
     def process_service_workers_stream_monitored(self, event_data):
         service_worker_size_analysis = [
             self.analyse_service_worker_overloaded,
             self.analyse_service_worker_best_idle,
+            # self.analyse_unnecessary_load_shedding,
         ]
 
         for analysis in service_worker_size_analysis:
