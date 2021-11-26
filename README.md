@@ -84,11 +84,13 @@ To run the benchmark tests one needs to manually start the Benchmark stage in th
 
 changePlanRequest
 
-ServiceWorkersStreamMonitored:
-    analyse_service_worker_overloaded (serviceWorkerOverloaded) -> ServiceWorkerOverloadedPlanRequested
-    analyse_service_worker_best_idle (serviceWorkerBestIdle) -> ServiceWorkerBestIdlePlanRequested
-    analyse_unnecessary_load_shedding (unnecessaryLoadShedding) -> UnnecessaryLoadSheddingPlanRequested
+    __ServiceWorkersStreamMonitored:
+        __analyse_service_worker_overloaded (serviceWorkerOverloaded) -> ServiceWorkerOverloadedPlanRequested
+        __analyse_service_worker_best_idle (serviceWorkerBestIdle) -> ServiceWorkerBestIdlePlanRequested
+        analyse_unnecessary_load_shedding (unnecessaryLoadShedding) -> UnnecessaryLoadSheddingPlanRequested
+    __QueryCreated
+        analyse_subscriber_query_change (incorrectSchedulerPlan) ->
+        analyse_buffer_stream_change (incorrectSchedulerPlan) -> QuerySchedulingPlanRequested
+    AdaptationPlanExecuted:
+        update_current_plan
 
-__QueryCreated
-    analyse_subscriber_query_change (incorrectSchedulerPlan) ->
-    analyse_buffer_stream_change (incorrectSchedulerPlan) -> QuerySchedulingPlanRequested
