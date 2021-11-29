@@ -44,7 +44,6 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
 
         self.current_service_workers = {}
         self.min_seconds_to_ask_same_change_request_type = 3
-        self.recent_plan_change_requests_timestamps = {}
         self.adaptation_delta = 10
         self.best_workers_by_service_by_qos_policy = {}
         self.query_qos_policies = self.prepare_query_qos_policies()
@@ -54,6 +53,7 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         self.current_plan = None
         self.overloaded_workers = None
         self.is_overloaded_percentage = 0.7
+        self.last_adaptation_executed_per_type = {}
 
     def prepare_query_qos_policies(self):
         query_qos_policies = {
@@ -82,19 +82,22 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
             query_qos_policies[qos_policy]['worker_a_b_comparison'] = comparison
         return query_qos_policies
 
-    # def verify_dont_have_similar_recent_plan_in_execution(self, event_data, change_plan_request_type, extra_time=0):
-    #     # should check on K the current plans and their timestamp to ignore any plan that's too recent
-    #     last_request_timestamp = self.recent_plan_change_requests_timestamps.get(change_plan_request_type)
-    #     if not last_request_timestamp:
-    #         return True
+    def verify_dont_have_similar_recent_plan_in_execution(self, change_type):
+        last_executed = self.last_adaptation_executed_per_type.get(change_type)
+        if last_executed is None:
+            return True
 
-    #     ts_now = datetime.datetime.now().timestamp()
-    #     seconds_since_last_request = ts_now - last_request_timestamp
-    #     min_time = self.min_seconds_to_ask_same_change_request_type + extra_time
-    #     if seconds_since_last_request < min_time:
-    #         return False
+        last_request_timestamp = last_executed.get('plan', {}).get('change_request', {}).get('timestamp')
+        if not last_request_timestamp:
+            return True
 
-    #     return True
+        ts_now = datetime.datetime.now().timestamp()
+        seconds_since_last_request = ts_now - last_request_timestamp
+        min_time = self.min_seconds_to_ask_same_change_request_type
+        if seconds_since_last_request < min_time:
+            return False
+
+        return True
 
     def update_current_plan(self, plan):
         self.current_plan = plan
@@ -104,7 +107,8 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
             'id': self.service_based_random_event_id(),
             'change': {
                 'type': event_type,
-                'cause': change_cause
+                'cause': change_cause,
+                'timestamp': datetime.datetime.now().timestamp(),
             }
         }
         return event_change_plan_data
@@ -176,12 +180,13 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
     def analyse_service_worker_overloaded(self, event_data):
         event_type = 'ServiceWorkerOverloadedPlanRequested'
         event_change_plan_data = None
-        self.overloaded_workers = self.verify_service_workers_overloaded(event_data)
+        if self.verify_dont_have_similar_recent_plan_in_execution(event_type):
+            self.overloaded_workers = self.verify_service_workers_overloaded(event_data)
 
-        if len(self.overloaded_workers) != 0:
-            event_change_plan_data = self.build_change_plan_request_data(
-                event_type=event_type, change_cause=event_data
-            )
+            if len(self.overloaded_workers) != 0:
+                event_change_plan_data = self.build_change_plan_request_data(
+                    event_type=event_type, change_cause=event_data
+                )
         return event_change_plan_data
 
     def _is_worker_idle(self, service_worker):
@@ -206,13 +211,14 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
     def analyse_service_worker_best_idle(self, event_data):
         event_type = 'ServiceWorkerBestIdlePlanRequested'
         event_change_plan_data = None
-        service_workers = event_data['service_workers']
-        has_idle_best_worker = self.verify_service_worker_best_idle(service_workers)
-        if has_idle_best_worker:
-            event_change_plan_data = self.build_change_plan_request_data(
-                event_type=event_type, change_cause=event_data
-            )
-            return event_change_plan_data
+        if self.verify_dont_have_similar_recent_plan_in_execution(event_type):
+            service_workers = event_data['service_workers']
+            has_idle_best_worker = self.verify_service_worker_best_idle(service_workers)
+            if has_idle_best_worker:
+                event_change_plan_data = self.build_change_plan_request_data(
+                    event_type=event_type, change_cause=event_data
+                )
+        return event_change_plan_data
 
     def verify_unnecessary_load_shedding_for_dataflow(self, overloaded_workers_keys, dataflow):
         for worker_key_list in dataflow:
@@ -258,12 +264,13 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
     def analyse_unnecessary_load_shedding(self, event_data):
         event_type = 'UnnecessaryLoadSheddingPlanRequested'
         event_change_plan_data = None
-        has_unnecessary_load_shedding = self.verify_unnecessary_load_shedding(event_data)
-        if has_unnecessary_load_shedding:
-            event_change_plan_data = self.build_change_plan_request_data(
-                event_type=event_type, change_cause=event_data
-            )
-            return event_change_plan_data
+        if self.verify_dont_have_similar_recent_plan_in_execution(event_type):
+            has_unnecessary_load_shedding = self.verify_unnecessary_load_shedding(event_data)
+            if has_unnecessary_load_shedding:
+                event_change_plan_data = self.build_change_plan_request_data(
+                    event_type=event_type, change_cause=event_data
+                )
+        return event_change_plan_data
 
     def process_service_workers_stream_monitored(self, event_data):
         service_worker_size_analysis = [
@@ -280,6 +287,10 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
                 break
         self.last_service_workers_monitoring = event_data
 
+    def process_scheduling_plan_executed(self, event_data):
+        last_executed_type = event_data.get('plan', {}).get('change_request', {}).get('type')
+        self.last_adaptation_executed_per_type[last_executed_type] = event_data
+
     def process_event_type(self, event_type, event_data, json_msg):
         if not super(AdaptationAnalyser, self).process_event_type(event_type, event_data, json_msg):
             return False
@@ -290,10 +301,12 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
             self.process_service_worker_announced(event_data)
         elif event_type == 'ServiceWorkersStreamMonitored':
             self.process_service_workers_stream_monitored(event_data)
+        elif event_type == 'SchedulingPlanExecuted':
+            self.process_scheduling_plan_executed(event_data)
 
     def log_state(self):
         super(AdaptationAnalyser, self).log_state()
-        self._log_dict('Recent Change Requests', self.recent_plan_change_requests_timestamps)
+        self._log_dict('Latest Executed Plans', self.last_adaptation_executed_per_type)
         self._log_dict('Best Workers by service by QOS policy', self.best_workers_by_service_by_qos_policy)
 
     def run(self):
