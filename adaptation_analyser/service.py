@@ -110,7 +110,7 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         return event_change_plan_data
 
     def process_query_created(self, event_data):
-        event_type = 'QuerySchedulingPlanRequested'
+        event_type = 'NewQuerySchedulingPlanRequested'
         event_change_plan_data = self.build_change_plan_request_data(
             event_type=event_type, change_cause=event_data
         )
