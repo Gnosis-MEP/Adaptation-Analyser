@@ -28,19 +28,6 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         self.cmd_validation_fields = ['id']
         self.data_validation_fields = ['id']
 
-        # self.entity_type_to_processing_functions_map = {
-        #     'gnosis-mep:buffer_stream': [
-        #         self.analyse_buffer_stream_change
-        #     ],
-        #     'gnosis-mep:service_worker': [
-        #         self.analyse_service_worker_overloaded,
-        #         self.analyse_service_worker_best_idle,
-        #         self.analyse_unnecessary_load_shedding,
-        #     ],
-        #     'gnosis-mep:subscriber_query': [
-        #         self.analyse_subscriber_query_change,
-        #     ]
-        # }
 
         self.current_service_workers = {}
         self.min_seconds_to_ask_same_change_request_type = 3
