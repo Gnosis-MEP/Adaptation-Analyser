@@ -78,3 +78,19 @@ And, in order to make the automatic tests work, you should also set the rest of 
 
 ## Benchmark Tests
 To run the benchmark tests one needs to manually start the Benchmark stage in the CI pipeline, it shoud be enabled after the tests stage is done. Only by passing the benchmark tests shoud the image be tagged with 'latest', to show that it is a stable docker image.
+
+
+
+
+changePlanRequest
+
+    __ServiceWorkersStreamMonitored:
+        __analyse_service_worker_overloaded (serviceWorkerOverloaded) -> ServiceWorkerOverloadedPlanRequested
+        __analyse_service_worker_best_idle (serviceWorkerBestIdle) -> ServiceWorkerBestIdlePlanRequested
+        analyse_unnecessary_load_shedding (unnecessaryLoadShedding) -> UnnecessaryLoadSheddingPlanRequested
+    __QueryCreated
+        analyse_subscriber_query_change (incorrectSchedulerPlan) ->
+        analyse_buffer_stream_change (incorrectSchedulerPlan) -> QuerySchedulingPlanRequested
+    AdaptationPlanExecuted:
+        update_current_plan
+
