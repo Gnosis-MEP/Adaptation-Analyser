@@ -15,6 +15,7 @@ variables:
   PUB_EVENT_TYPE_SERVICE_WORKER_OVERLOADED_PLAN_REQUESTED: ServiceWorkerOverloadedPlanRequested
   PUB_EVENT_TYPE_SERVICE_WORKER_BEST_IDLE_REQUESTED: ServiceWorkerBestIdlePlanRequested
   PUB_EVENT_TYPE_UNNECESSARY_LOAD_SHEDDING_REQUESTED: UnnecessaryLoadSheddingPlanRequested
+  BENCHMARK_TEMPLATE_NAME: default
   LOGGING_LEVEL: DEBUG
   DOCKER_HOST: tcp://docker:2375/
   DOCKER_DRIVER: overlay2
@@ -50,12 +51,10 @@ Send to benchmark:
   stage: benchmark
   image: python:3.6
   script:
-    - "curl -H \"PRIVATE-TOKEN: $SIT_TOKEN\" \"https://gitlab.insight-centre.org/api/v4/projects/2180/repository/files/test_benchmark.py/raw?ref=master\" -o test_benchmark.py"
-    - cat test_benchmark.py
-    - python test_benchmark.py ${BENCHMARK_PLATFORM_CONTROLLER_URL} adaptation-analyser $CI_REGISTRY_IMAGE $CI_COMMIT_REF_NAME
+    - "curl -H \"PRIVATE-TOKEN: $SIT_TOKEN\" \"https://gitlab.insight-centre.org/api/v4/projects/2180/repository/files/test_benchmark_from_template.py/raw?ref=master\" -o test_benchmark_from_template.py"
+    - python test_benchmark_from_template.py ${BENCHMARK_PLATFORM_CONTROLLER_URL} ${BENCHMARK_TEMPLATE_NAME} adaptation-analyser $CI_REGISTRY_IMAGE $CI_COMMIT_REF_NAME
   when: manual
   allow_failure: false
-
 Tag Latest:
   stage: tag-latest
   image: jonoh/docker-buildx-qemu
