@@ -6,6 +6,15 @@ from event_service_utils.logging.decorators import timer_logger
 from event_service_utils.services.event_driven import BaseEventDrivenCMDService
 from event_service_utils.tracing.jaeger import init_tracer
 
+from adaptation_analyser.conf import (
+    LISTEN_EVENT_TYPE_QUERY_CREATED,
+    LISTEN_EVENT_TYPE_SERVICE_SLR_PROFILES_RANKED,
+    LISTEN_EVENT_TYPE_SERVICE_WORKERS_STREAM_MONITORED,
+    LISTEN_EVENT_TYPE_SERVICE_WORKER_ANNOUNCED,
+    LISTEN_EVENT_TYPE_SCHEDULING_PLAN_EXECUTED,
+    PUB_EVENT_TYPE_SERVICE_WORKER_SLR_PROFILE_CHANGE_PLAN_REQUESTED
+)
+
 
 class AdaptationAnalyser(BaseEventDrivenCMDService):
     def __init__(self,
@@ -141,6 +150,13 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         workers_dict = service_type_dict.setdefault('workers', {})
         workers_dict[stream_key] = worker
         self.update_best_worker_by_service_by_qos_policy(self.current_service_workers)
+
+    def process_service_worker_slr_profiles_ranked(self, event_data):
+        event_type = PUB_EVENT_TYPE_SERVICE_WORKER_SLR_PROFILE_CHANGE_PLAN_REQUESTED
+        event_change_plan_data = self.build_change_plan_request_data(
+            event_type=event_type, change_cause=event_data
+        )
+        self.publish_event_type_to_stream(event_type=event_type, new_event_data=event_change_plan_data)
 
     def _is_service_worker_overloaded(self, service_worker):
         queue_size = int(service_worker.get('queue_size', 0))
@@ -282,13 +298,22 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         if not super(AdaptationAnalyser, self).process_event_type(event_type, event_data, json_msg):
             return False
 
-        if event_type == 'QueryCreated':
+
+    # LISTEN_EVENT_TYPE_QUERY_CREATED,
+    # LISTEN_EVENT_TYPE_SERVICE_SLR_PROFILES_RANKED,
+    # LISTEN_EVENT_TYPE_SERVICE_WORKERS_STREAM_MONITORED,
+    # LISTEN_EVENT_TYPE_SERVICE_WORKER_ANNOUNCED,
+    # LISTEN_EVENT_TYPE_SCHEDULING_PLAN_EXECUTED,
+
+        if event_type == LISTEN_EVENT_TYPE_QUERY_CREATED:
             self.process_query_created(event_data)
-        elif event_type == 'ServiceWorkerAnnounced':
+        elif event_type == LISTEN_EVENT_TYPE_SERVICE_WORKER_ANNOUNCED:
             self.process_service_worker_announced(event_data)
-        elif event_type == 'ServiceWorkersStreamMonitored':
+        elif event_type == LISTEN_EVENT_TYPE_SERVICE_SLR_PROFILES_RANKED:
+            self.process_service_worker_slr_profiles_ranked(event_data)
+        elif event_type == LISTEN_EVENT_TYPE_SERVICE_WORKERS_STREAM_MONITORED:
             self.process_service_workers_stream_monitored(event_data)
-        elif event_type == 'SchedulingPlanExecuted':
+        elif event_type == LISTEN_EVENT_TYPE_SCHEDULING_PLAN_EXECUTED:
             self.process_scheduling_plan_executed(event_data)
 
     def log_state(self):
