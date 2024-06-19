@@ -3,11 +3,6 @@ name = "pypi"
 url = "https://pypi.org/simple"
 verify_ssl = true
 
-[[source]]
-url = "https://${SIT_PYPI_USER}:${SIT_PYPI_PASS}@sit-pypi.herokuapp.com/simple"
-verify_ssl = true
-name = "sit-git"
-
 [dev-packages]
 ipython = "*"
 ipdb = "*"
