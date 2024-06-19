@@ -58,15 +58,14 @@ class UAServiceAnalysis(object):
         # self.rules.append(
         #     ctrl.Rule(queue_size['very_low'], usage['very_low'])
         # )
-        alg_and = lambda a, b : a * b
-        alg_or = lambda a, b: a + b - (a * b)
+        # alg_and = lambda a, b : a * b
+        # alg_or = lambda a, b: a + b - (a * b)
         self.rules.append(
             ctrl.Rule(adp_max_cap['very_low'] & queue_size['very_low'], usage['high'])
         )
         self.rules.append(
             ctrl.Rule((~adp_max_cap['very_low']) & queue_size['very_low'], usage['very_low'])
         )
-                    #   , and_func=alg_and, or_func=alg_or)
 
         # rules for queue_size low
         self.rules.append(
@@ -108,7 +107,8 @@ class UAServiceAnalysis(object):
             ctrl.Rule(adp_max_cap['medium'] & queue_size['medium'], usage['high'])
         )
         self.rules.append(
-            ctrl.Rule(adp_max_cap['high'] & queue_size['medium'], usage['medium'], and_func=alg_and, or_func=np.fmax)
+            ctrl.Rule(adp_max_cap['high'] & queue_size['medium'], usage['medium'])
+                    #   , and_func=alg_and, or_func=np.fmax)
         )
         self.rules.append(
             ctrl.Rule(adp_max_cap['very_high'] & queue_size['medium'], usage['low'])
@@ -123,7 +123,8 @@ class UAServiceAnalysis(object):
         )
         self.rules.append(
             # ctrl.Rule(adp_max_cap['medium'] & queue_size['high'], usage['very_high'])
-            ctrl.Rule(adp_max_cap['medium'] & queue_size['high'], usage['very_high'], and_func=np.fmin, or_func=lambda a, b: np.minimum(1, a + b))
+            ctrl.Rule(adp_max_cap['medium'] & queue_size['high'], usage['very_high'])
+                    #   , and_func=np.fmin, or_func=lambda a, b: np.minimum(1, a + b))
         )
         self.rules.append(
             ctrl.Rule(adp_max_cap['high'] & queue_size['high'], usage['high'])
