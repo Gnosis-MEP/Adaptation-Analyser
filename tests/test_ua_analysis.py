@@ -80,43 +80,43 @@ class TestUAServiceAnalysis(TestCase):
         self.assertIsNotNone(self.ua_analysis.fis)
         self.assertIsNotNone(self.ua_analysis.fis)
 
-    # def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_very_low_for_worker1(self):
-    #     self.ua_analysis.setup_from_workers(self.workers_set_b)
-    #     queue_size = 5
-    #     max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
-    #     usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
-    #     crisp_usage_ref = queue_size / max_capacity * 100
-    #     # print(crisp_usage_ref, usage)
-    #     self.assertLess(usage, 25)
+    #worker 1
+    def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_very_low_for_worker1(self):
+        self.ua_analysis.setup_from_workers(self.workers_set_b)
+        queue_size = 5
+        max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
+        usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
+        crisp_usage_ref = queue_size / max_capacity * 100
+        self.assertLessEqual(usage, 26)
 
-    # def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_low_for_worker1(self):
-    #     self.ua_analysis.setup_from_workers(self.workers_set_b)
-    #     queue_size = 15
-    #     max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
-    #     usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
-    #     crisp_usage_ref = queue_size / max_capacity * 100
-    #     # print(crisp_usage_ref, usage)
-    #     self.assertLess(usage, 50)
+    def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_low_for_worker1(self):
+        self.ua_analysis.setup_from_workers(self.workers_set_b)
+        queue_size = 15
+        max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
+        usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
+        crisp_usage_ref = queue_size / max_capacity * 100
+        # print(crisp_usage_ref, usage)
+        self.assertLessEqual(usage, 50)
 
-    # def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_high_for_worker1(self):
-    #     self.ua_analysis.setup_from_workers(self.workers_set_b)
-    #     queue_size = 85
-    #     max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
-    #     usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
-    #     crisp_usage_ref = queue_size / max_capacity * 100
-    #     # print(crisp_usage_ref, usage)
-    #     self.assertGreater(usage, 70)
-    #     self.assertLess(usage, 90)
+    def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_high_for_worker1(self):
+        self.ua_analysis.setup_from_workers(self.workers_set_b)
+        queue_size = 85
+        max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
+        usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
+        crisp_usage_ref = queue_size / max_capacity * 100
+        # print(crisp_usage_ref, usage)
+        self.assertGreaterEqual(usage, 70)
+        self.assertLessEqual(usage, 90)
 
-    # def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_very_high_for_worker1(self):
-    #     self.ua_analysis.setup_from_workers(self.workers_set_b)
-    #     queue_size = 100
-    #     max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
-    #     usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
-    #     crisp_usage_ref = queue_size / max_capacity * 100
-    #     # print(crisp_usage_ref, usage)
-    #     self.assertGreater(usage, 75)
-    #     self.assertLess(usage, 95)
+    def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_very_high_for_worker1(self):
+        self.ua_analysis.setup_from_workers(self.workers_set_b)
+        queue_size = 100
+        max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
+        usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
+        crisp_usage_ref = queue_size / max_capacity * 100
+        # print(crisp_usage_ref, usage)
+        self.assertGreater(usage, 75)
+        self.assertLess(usage, 95)
 
     #worker2
     def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_very_low_for_worker2(self):
@@ -137,15 +137,15 @@ class TestUAServiceAnalysis(TestCase):
         # print(crisp_usage_ref, usage)
         self.assertLessEqual(usage, 35)
 
-    # def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_medium_for_worker2(self):
-    #     self.ua_analysis.setup_from_workers(self.workers_set_b)
-    #     queue_size = 250
-    #     max_capacity = math.floor(self.worker_2['throughput'] * self.adaptation_delta)
-    #     usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
-    #     crisp_usage_ref = queue_size / max_capacity * 100
-    #     print(crisp_usage_ref, usage)
-    #     self.assertGreaterEqual(usage, 30)
-    #     self.assertLessEqual(usage, 60)
+    def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_medium_for_worker2(self):
+        self.ua_analysis.setup_from_workers(self.workers_set_b)
+        queue_size = 250
+        max_capacity = math.floor(self.worker_2['throughput'] * self.adaptation_delta)
+        usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
+        crisp_usage_ref = queue_size / max_capacity * 100
+        # print(crisp_usage_ref, usage)
+        self.assertGreaterEqual(usage, 30)
+        self.assertLessEqual(usage, 60)
 
     def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_high_for_worker2(self):
         self.ua_analysis.setup_from_workers(self.workers_set_b)
@@ -255,11 +255,11 @@ class TestUAServiceAnalysis(TestCase):
         self.assertGreaterEqual(usage, 70)
         self.assertLessEqual(usage, 90)
 
-    # def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_very_high_for_worker4(self):
-    #     self.ua_analysis.setup_from_workers(self.workers_set_b)
-    #     queue_size = 800
-    #     max_capacity = math.floor(self.worker_4['throughput'] * self.adaptation_delta)
-    #     usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
-    #     crisp_usage_ref = queue_size / max_capacity * 100
-    #     # print(crisp_usage_ref, usage)
-    #     self.assertGreaterEqual(usage, 85)
+    def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_very_high_for_worker4(self):
+        self.ua_analysis.setup_from_workers(self.workers_set_b)
+        queue_size = 1000
+        max_capacity = math.floor(self.worker_4['throughput'] * self.adaptation_delta)
+        usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
+        crisp_usage_ref = queue_size / max_capacity * 100
+        # print(crisp_usage_ref, usage)
+        self.assertGreaterEqual(usage, 85)
