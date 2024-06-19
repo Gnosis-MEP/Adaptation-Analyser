@@ -45,6 +45,10 @@ PUB_EVENT_LIST = [
 ]
 
 
+MF_LABELS = ['very_low', 'low', 'medium', 'high', 'very_high']
+
+UA_USAGE_ANALYSIS = config('UA_USAGE_ANALYSIS', default=False)
+
 SERVICE_DETAILS = None
 
 LOGGING_LEVEL = config('LOGGING_LEVEL', default='DEBUG')
