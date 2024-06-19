@@ -6,13 +6,16 @@ from event_service_utils.logging.decorators import timer_logger
 from event_service_utils.services.event_driven import BaseEventDrivenCMDService
 from event_service_utils.tracing.jaeger import init_tracer
 
+from adaptation_analyser.uncertainty.ua_analysis import UAServiceAnalysis
+
 from adaptation_analyser.conf import (
     LISTEN_EVENT_TYPE_QUERY_CREATED,
     LISTEN_EVENT_TYPE_SERVICE_SLR_PROFILES_RANKED,
     LISTEN_EVENT_TYPE_SERVICE_WORKERS_STREAM_MONITORED,
     LISTEN_EVENT_TYPE_SERVICE_WORKER_ANNOUNCED,
     LISTEN_EVENT_TYPE_SCHEDULING_PLAN_EXECUTED,
-    PUB_EVENT_TYPE_SERVICE_WORKER_SLR_PROFILE_CHANGE_PLAN_REQUESTED
+    PUB_EVENT_TYPE_SERVICE_WORKER_SLR_PROFILE_CHANGE_PLAN_REQUESTED,
+    UA_USAGE_ANALYSIS,
 )
 
 
@@ -50,6 +53,7 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         self.overloaded_workers = None
         self.is_overloaded_percentage = 0.7
         self.last_adaptation_executed_per_type = {}
+        self.ua_usage_analysis_per_type = {}
 
     def prepare_query_qos_policies(self):
         query_qos_policies = {
@@ -142,6 +146,11 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
                     self.best_workers_by_service_by_qos_policy[qos_policy] = qos_policy_best_workers
         return self.best_workers_by_service_by_qos_policy
 
+    def update_ua_service_analysis(self, service_workers, service_type):
+        if service_type not in self.ua_usage_analysis_per_type:
+            self.ua_usage_analysis_per_type[service_type] = UAServiceAnalysis(self, service_type)
+        self.ua_usage_analysis_per_type[service_type].setup_from_workers(service_workers[service_type])
+
     def process_service_worker_announced(self, event_data):
         worker = event_data.get('worker')
         stream_key = worker.get('stream_key')
@@ -150,6 +159,8 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         workers_dict = service_type_dict.setdefault('workers', {})
         workers_dict[stream_key] = worker
         self.update_best_worker_by_service_by_qos_policy(self.current_service_workers)
+        if UA_USAGE_ANALYSIS:
+            self.update_ua_service_analysis(self.current_service_workers, service_type)
 
     def process_service_worker_slr_profiles_ranked(self, event_data):
         event_type = PUB_EVENT_TYPE_SERVICE_WORKER_SLR_PROFILE_CHANGE_PLAN_REQUESTED
@@ -161,12 +172,17 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
     def _is_service_worker_overloaded(self, service_worker):
         queue_size = int(service_worker.get('queue_size', 0))
         throughput = float(service_worker.get('throughput', 0.0))
-        capacity = math.floor(throughput * self.adaptation_delta)
-        if capacity == 0:
+        max_capacity = math.floor(throughput * self.adaptation_delta)
+        if max_capacity == 0:
             return True
-        overloaded_percentage = queue_size / capacity
+        if UA_USAGE_ANALYSIS:
+            service_type = service_worker['service_type']
+            ua_analysis = self.ua_usage_analysis_per_type[service_type]
+            usage_percentage = ua_analysis.calculate_worker_usage(queue_size, max_capacity)
+        else:
+            usage_percentage = queue_size / max_capacity
 
-        return overloaded_percentage >= self.is_overloaded_percentage
+        return usage_percentage >= self.is_overloaded_percentage
 
     def verify_service_workers_overloaded(self, event_data):
         overloaded_workers = []
