@@ -12,6 +12,8 @@ flake8 = "*"
 walrus = "==0.7.1"
 python-decouple = "==3.1"
 event-service-utils = "*"
+scikit-fuzzy = "==0.4.2"
+matplotlib = "==3.3.4"
 adaptation_analyser = {path = ".",editable = true}
 
 [requires]

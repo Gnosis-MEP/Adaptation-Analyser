@@ -1,4 +1,6 @@
 event-service-utils
 python-decouple==3.1
 walrus==0.7.1
+scikit-fuzzy==0.4.2
+matplotlib==3.3.4
 -e file:./#egg=adaptation_analyser
