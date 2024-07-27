@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from unittest.mock import MagicMock
 import numpy as np
 import matplotlib.pyplot as plt
