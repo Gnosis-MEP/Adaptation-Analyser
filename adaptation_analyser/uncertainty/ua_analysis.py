@@ -1,8 +1,6 @@
 import math
 
 import numpy as np
-import matplotlib.pyplot as plt
-import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 
 from adaptation_analyser.conf import MF_LABELS
