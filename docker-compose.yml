@@ -6,7 +6,7 @@ services:
       - "6379:6379"
 
   service:
-    image: registry.insight-centre.org/sit/mps/adaptation-analyser:dev
+    image: arruda/adaptation-analyser:master
     command: echo "ok"
     build:
       context: '.'
