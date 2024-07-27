@@ -83,7 +83,7 @@ class TestUAServiceAnalysis(TestCase):
     #worker 1
     def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_very_low_for_worker1(self):
         self.ua_analysis.setup_from_workers(self.workers_set_b)
-        queue_size = 1
+        queue_size = 5
         max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
         usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
         crisp_usage_ref = queue_size / max_capacity * 100
@@ -91,7 +91,7 @@ class TestUAServiceAnalysis(TestCase):
 
     def test_calculate_worker_usage_returns_sound_result_when_queue_size_is_low_for_worker1(self):
         self.ua_analysis.setup_from_workers(self.workers_set_b)
-        queue_size = 15
+        queue_size = 25
         max_capacity = math.floor(self.worker_1['throughput'] * self.adaptation_delta)
         usage = self.ua_analysis.calculate_worker_usage(queue_size=queue_size, max_capacity=max_capacity)
         crisp_usage_ref = queue_size / max_capacity * 100
