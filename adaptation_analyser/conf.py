@@ -47,7 +47,7 @@ PUB_EVENT_LIST = [
 
 MF_LABELS = ['very_low', 'low', 'medium', 'high', 'very_high']
 
-UA_USAGE_ANALYSIS = config('UA_USAGE_ANALYSIS', default=False)
+UA_USAGE_ANALYSIS = config('UA_USAGE_ANALYSIS', default=False, cast=bool)
 
 SERVICE_DETAILS = None
 

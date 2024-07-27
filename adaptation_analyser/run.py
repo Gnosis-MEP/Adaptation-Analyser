@@ -13,6 +13,7 @@ from adaptation_analyser.conf import (
     TRACER_REPORTING_HOST,
     TRACER_REPORTING_PORT,
     SERVICE_DETAILS,
+    UA_USAGE_ANALYSIS,
 )
 
 

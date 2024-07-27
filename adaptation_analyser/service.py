@@ -149,7 +149,7 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
     def update_ua_service_analysis(self, service_workers, service_type):
         if service_type not in self.ua_usage_analysis_per_type:
             self.ua_usage_analysis_per_type[service_type] = UAServiceAnalysis(self, service_type)
-        self.ua_usage_analysis_per_type[service_type].setup_from_workers(service_workers[service_type])
+        self.ua_usage_analysis_per_type[service_type].setup_from_workers(service_workers[service_type]['workers'])
 
     def process_service_worker_announced(self, event_data):
         worker = event_data.get('worker')
@@ -175,10 +175,14 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         max_capacity = math.floor(throughput * self.adaptation_delta)
         if max_capacity == 0:
             return True
+        if queue_size == 0:
+            return False
+
         if UA_USAGE_ANALYSIS:
             service_type = service_worker['service_type']
             ua_analysis = self.ua_usage_analysis_per_type[service_type]
-            usage_percentage = ua_analysis.calculate_worker_usage(queue_size, max_capacity)
+            usage_percentage = ua_analysis.calculate_worker_usage(queue_size, max_capacity) / 100
+            self.logger.debug(f">>>>\n\n\n fuzzy percentage ({queue_size} / {max_capacity}): {usage_percentage} vs crisp {queue_size/max_capacity} \n")
         else:
             usage_percentage = queue_size / max_capacity
 
@@ -314,13 +318,6 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         if not super(AdaptationAnalyser, self).process_event_type(event_type, event_data, json_msg):
             return False
 
-
-    # LISTEN_EVENT_TYPE_QUERY_CREATED,
-    # LISTEN_EVENT_TYPE_SERVICE_SLR_PROFILES_RANKED,
-    # LISTEN_EVENT_TYPE_SERVICE_WORKERS_STREAM_MONITORED,
-    # LISTEN_EVENT_TYPE_SERVICE_WORKER_ANNOUNCED,
-    # LISTEN_EVENT_TYPE_SCHEDULING_PLAN_EXECUTED,
-
         if event_type == LISTEN_EVENT_TYPE_QUERY_CREATED:
             self.process_query_created(event_data)
         elif event_type == LISTEN_EVENT_TYPE_SERVICE_WORKER_ANNOUNCED:
@@ -336,6 +333,8 @@ class AdaptationAnalyser(BaseEventDrivenCMDService):
         super(AdaptationAnalyser, self).log_state()
         self._log_dict('Latest Executed Plans', self.last_adaptation_executed_per_type)
         self._log_dict('Best Workers by service by QOS policy', self.best_workers_by_service_by_qos_policy)
+        if UA_USAGE_ANALYSIS:
+            self._log_dict('UA analysis per service type', self.ua_usage_analysis_per_type)
 
     def run(self):
         super(AdaptationAnalyser, self).run()
