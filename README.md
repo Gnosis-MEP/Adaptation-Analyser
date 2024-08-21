@@ -1,18 +1,20 @@
 # Adaptation Analyser
-Service responsible for analysing alerts in the MAPE-K architecture for self-adaptivity
+Analyse in the MAPE-K architecture, checks if any QoS policy rules are being broken (e.g.: a worker is overloaded), and if so, it publishes a requests for a specific change on the system planning.
 
-# Commands Stream
-## Inputs
-...
+# Events Listened
+ - [QUERY_CREATED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#QUERY_CREATED)
+ - [SERVICE_SLR_PROFILES_RANKED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#SERVICE_SLR_PROFILES_RANKED)
+ - [SERVICE_WORKERS_STREAM_MONITORED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#SERVICE_WORKERS_STREAM_MONITORED)
+ - [SERVICE_WORKER_ANNOUNCED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#SERVICE_WORKER_ANNOUNCED)
+ - [SCHEDULING_PLAN_EXECUTED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#SCHEDULING_PLAN_EXECUTED)
 
-## Outputs
-...
-# Data Stream
-## inputs
-...
+# Events Published
+ - [NEW_QUERY_SCHEDULING_PLAN_REQUESTED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#NEW_QUERY_SCHEDULING_PLAN_REQUESTED)
+ - [SERVICE_WORKER_SLR_PROFILE_CHANGE_PLAN_REQUESTED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#SERVICE_WORKER_SLR_PROFILE_CHANGE_PLAN_REQUESTED)
+ - [SERVICE_WORKER_OVERLOADED_PLAN_REQUESTED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#SERVICE_WORKER_OVERLOADED_PLAN_REQUESTED)
+ - [SERVICE_WORKER_BEST_IDLE_REQUESTED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#SERVICE_WORKER_BEST_IDLE_REQUESTED)
+ - [UNNECESSARY_LOAD_SHEDDING_REQUESTED](https://github.com/Gnosis-MEP/Gnosis-Docs/blob/main/EventTypes.md#UNNECESSARY_LOAD_SHEDDING_REQUESTED)
 
-## Outputs
-...
 
 # Installation
 
@@ -35,7 +37,7 @@ Load the environment variables from `.env` file using `source load_env.sh`.
 
 To install from the `requirements.txt` file, run the following command:
 ```
-$ pip install --extra-index-url https://${SIT_PYPI_USER}:${SIT_PYPI_PASS}@sit-pypi.herokuapp.com/simple -r requirements.txt
+$ pip install -r requirements.txt
 ```
 
 # Running
@@ -80,17 +82,4 @@ And, in order to make the automatic tests work, you should also set the rest of 
 To run the benchmark tests one needs to manually start the Benchmark stage in the CI pipeline, it shoud be enabled after the tests stage is done. Only by passing the benchmark tests shoud the image be tagged with 'latest', to show that it is a stable docker image.
 
 
-
-
-changePlanRequest
-
-    __ServiceWorkersStreamMonitored:
-        __analyse_service_worker_overloaded (serviceWorkerOverloaded) -> ServiceWorkerOverloadedPlanRequested
-        __analyse_service_worker_best_idle (serviceWorkerBestIdle) -> ServiceWorkerBestIdlePlanRequested
-        analyse_unnecessary_load_shedding (unnecessaryLoadShedding) -> UnnecessaryLoadSheddingPlanRequested
-    __QueryCreated
-        analyse_subscriber_query_change (incorrectSchedulerPlan) ->
-        analyse_buffer_stream_change (incorrectSchedulerPlan) -> QuerySchedulingPlanRequested
-    AdaptationPlanExecuted:
-        update_current_plan
 
